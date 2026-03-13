@@ -158,11 +158,22 @@ def main():
     parser.add_argument("--port", type=int, default=8899, help="Server port (default: 8899)")
     parser.add_argument("--duration", type=int, default=30, help="Chunk duration in seconds (default: 30)")
     parser.add_argument("--rate", type=int, default=16000, help="Sample rate (default: 16000)")
-    parser.add_argument("--method", choices=["pyaudio", "termux"], default="pyaudio",
-                        help="Recording method (default: pyaudio)")
+    parser.add_argument("--method", choices=["auto", "pyaudio", "termux"], default="auto",
+                        help="Recording method (default: auto — tries pyaudio, falls back to termux)")
     parser.add_argument("--silence-threshold", type=int, default=500,
                         help="RMS threshold below which audio is considered silence (default: 500)")
     args = parser.parse_args()
+
+    # Auto-detect method
+    if args.method == "auto":
+        try:
+            import pyaudio  # noqa: F401
+            args.method = "pyaudio"
+            print("Method: pyaudio (auto-detected)")
+        except ImportError:
+            args.method = "termux"
+            print("pyaudio not found — using termux-microphone-record")
+            print("  (To use pyaudio instead: pkg install portaudio && pip install pyaudio)")
 
     server_url = f"http://{args.server}:{args.port}/api/audio"
 

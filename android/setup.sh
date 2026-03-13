@@ -37,7 +37,10 @@ pkg update -y
 pkg install -y python libusb termux-api
 
 # Install Python dependencies
-pip install pyusb pyaudio
+pip install pyusb
+
+# PyAudio requires portaudio (optional — audio_capture.py falls back to termux-microphone-record without it)
+pkg install -y portaudio && pip install pyaudio || echo "portaudio/pyaudio install failed — audio will use termux-microphone-record fallback"
 
 # List USB devices
 echo ""
