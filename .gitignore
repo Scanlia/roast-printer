@@ -1,0 +1,18 @@
+# Secrets
+.env
+
+# Runtime data
+data/
+*.bin
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# YOLO weights (downloaded at build time)
+*.pt
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,11 @@
+services:
+  roast-printer:
+    build: .
+    container_name: roast-printer
+    restart: unless-stopped
+    network_mode: host          # needs LAN access to Protect + ESP32
+    env_file: .env
+    volumes:
+      - ./data:/data            # persists last-event timestamp
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
