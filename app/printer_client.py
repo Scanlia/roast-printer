@@ -68,7 +68,7 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
         draw.text((x, y), text, fill=0, font=font)
 
     font_title  = load_font(40, bold=True)
-    font_roast  = load_font(24, bold=True)
+    font_roast  = load_font(24, bold=False)
     font_footer = load_font(18)
 
     if image_b64:
