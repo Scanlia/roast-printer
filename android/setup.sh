@@ -36,8 +36,8 @@ echo "=== Termux Print Bridge Setup ==="
 pkg update -y
 pkg install -y python libusb termux-api
 
-# Install Python USB library
-pip install pyusb
+# Install Python dependencies
+pip install pyusb pyaudio
 
 # List USB devices
 echo ""
@@ -47,8 +47,11 @@ echo ""
 echo "If you see your printer above, grant permission with:"
 echo "  termux-usb -r /dev/bus/usb/XXX/YYY"
 echo ""
-echo "Then run the bridge:"
+echo "Then run the print bridge:"
 echo "  python print_bridge.py"
+echo ""
+echo "To also start audio capture (in a separate terminal):"
+echo "  python audio_capture.py <SERVER_IP>"
 echo ""
 echo "The server IP is:"
 ip -4 addr show wlan0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || echo "(check Settings > Wi-Fi)"

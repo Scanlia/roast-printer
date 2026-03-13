@@ -34,6 +34,10 @@ class Config:
     poll_interval_seconds: int
     cooldown_seconds: int
 
+    # Audio / conversation roasting
+    audio_enabled: bool
+    audio_cooldown_seconds: int
+
     @classmethod
     def from_env(cls) -> "Config":
         return cls(
@@ -53,4 +57,6 @@ class Config:
             receipt_width_px=int(os.environ.get("RECEIPT_WIDTH_PX", "576")),
             poll_interval_seconds=int(os.environ.get("POLL_INTERVAL_SECONDS", "5")),
             cooldown_seconds=int(os.environ.get("COOLDOWN_SECONDS", "120")),
+            audio_enabled=os.environ.get("AUDIO_ENABLED", "true").lower() == "true",
+            audio_cooldown_seconds=int(os.environ.get("AUDIO_COOLDOWN_SECONDS", "90")),
         )

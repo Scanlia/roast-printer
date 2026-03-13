@@ -31,6 +31,8 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
     image_b64 = payload.get("image_b64", "")
     roast_text = payload.get("roast_text", "")
     timestamp  = payload.get("timestamp", "")
+    receipt_title = payload.get("receipt_title", "HUMAN DETECTED")
+    receipt_footer = payload.get("receipt_footer", "ROAST-O-MATIC 3000")
 
     W = paper_width_dots
     MARGIN = 10
@@ -92,7 +94,7 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
     draw = ImageDraw.Draw(img)
     cy = MARGIN
 
-    draw_centred(draw, "HUMAN DETECTED", cy, font_title); cy += 40
+    draw_centred(draw, receipt_title, cy, font_title); cy += 40
     draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=0, width=2); cy += 8
 
     if pimg:
@@ -105,7 +107,7 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
 
     cy += 10
     draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=0, width=1); cy += 6
-    draw_centred(draw, "ROAST-O-MATIC 3000", cy, font_footer); cy += 20
+    draw_centred(draw, receipt_footer, cy, font_footer); cy += 20
     draw_centred(draw, timestamp, cy, font_footer)
 
     return img

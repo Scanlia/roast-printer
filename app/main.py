@@ -25,9 +25,13 @@ from gemini_roast import GeminiRoaster
 from image_processor import ImageProcessor
 from printer_client import PrinterClient
 from person_detector import PersonDetector
+from speech_transcriber import SpeechTranscriber
+from conversation_roaster import ConversationRoaster
+from audio_listener import AudioListener
 from web_dashboard import (
     WebLogHandler, set_latest_roast, set_latest_payload,
     set_printer_client, set_cooldown, get_cooldown, start_dashboard,
+    set_audio_listener, set_latest_convo_roast,
 )
 
 # ---- logging: stdout + file + web dashboard ----
@@ -99,6 +103,29 @@ def main() -> None:
     set_printer_client(printer)  # enable dashboard reprint button
     set_cooldown(cfg.cooldown_seconds)  # seed dashboard with .env value
     detector = PersonDetector(confidence=0.35)
+
+    # ---- audio / conversation roasting ----
+    if cfg.audio_enabled:
+        transcriber = SpeechTranscriber(
+            api_key=cfg.gemini_api_key, model=cfg.gemini_model,
+        )
+        convo_roaster = ConversationRoaster(
+            api_key=cfg.gemini_api_key,
+            model=cfg.gemini_model,
+            cooldown_seconds=cfg.audio_cooldown_seconds,
+        )
+        audio = AudioListener(
+            transcriber=transcriber,
+            roaster=convo_roaster,
+            printer_client=printer,
+            paper_width_dots=cfg.receipt_width_px,
+            on_roast_callback=set_latest_convo_roast,
+        )
+        set_audio_listener(audio)
+        log.info("🎤 Audio conversation roasting enabled (cooldown %ds)",
+                 cfg.audio_cooldown_seconds)
+    else:
+        log.info("Audio conversation roasting disabled")
 
     # ---- authenticate & find camera ----
     log.info("Connecting to UniFi Protect...")
