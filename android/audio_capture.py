@@ -23,6 +23,28 @@ import urllib.request
 import urllib.error
 
 
+def test_pyaudio() -> bool:
+    """Try to open the mic briefly to see if pyaudio actually works."""
+    try:
+        import pyaudio
+        pa = pyaudio.PyAudio()
+        try:
+            stream = pa.open(
+                format=pyaudio.paInt16, channels=1, rate=16000,
+                input=True, frames_per_buffer=1024,
+            )
+            stream.read(1024, exception_on_overflow=False)
+            stream.stop_stream()
+            stream.close()
+            return True
+        except Exception:
+            return False
+        finally:
+            pa.terminate()
+    except Exception:
+        return False
+
+
 def record_chunk_pyaudio(duration: int, rate: int = 16000, channels: int = 1) -> bytes:
     """Record a chunk of audio using PyAudio and return WAV bytes."""
     import pyaudio
@@ -57,21 +79,28 @@ def record_chunk_pyaudio(duration: int, rate: int = 16000, channels: int = 1) ->
 
 
 def record_chunk_termux(duration: int, rate: int = 16000) -> bytes:
-    """Record using termux-microphone-record as fallback."""
+    """Record using termux-microphone-record as fallback.
+
+    termux-microphone-record runs asynchronously — start it, wait for
+    the duration, then stop it and read the file.
+    """
     import subprocess
     import tempfile
     import os
 
     tmp = tempfile.mktemp(suffix=".wav")
     try:
-        # Start recording
+        # Start recording (returns immediately, records in background)
         subprocess.run(
-            ["termux-microphone-record", "-f", tmp, "-l", str(duration),
+            ["termux-microphone-record", "-f", tmp,
              "-e", "pcm", "-b", "16", "-r", str(rate), "-c", "1"],
-            timeout=duration + 10,
+            timeout=10,
         )
-        # Wait for the file
-        time.sleep(1)
+        # Wait for the requested duration
+        time.sleep(duration)
+        # Stop recording
+        subprocess.run(["termux-microphone-record", "-q"], timeout=5)
+        time.sleep(0.5)
 
         if os.path.exists(tmp):
             with open(tmp, "rb") as f:
@@ -168,12 +197,18 @@ def main():
     if args.method == "auto":
         try:
             import pyaudio  # noqa: F401
-            args.method = "pyaudio"
-            print("Method: pyaudio (auto-detected)")
+            print("pyaudio installed — testing mic access...")
+            if test_pyaudio():
+                args.method = "pyaudio"
+                print("Method: pyaudio (mic test passed)")
+            else:
+                args.method = "termux"
+                print("pyaudio mic test FAILED — using termux-microphone-record")
+                print("  (Grant mic permission: Termux:API app, Android Settings > Apps > Termux:API > Permissions)")
         except ImportError:
             args.method = "termux"
             print("pyaudio not found — using termux-microphone-record")
-            print("  (To use pyaudio instead: pkg install portaudio && pip install pyaudio)")
+            print("  (To use pyaudio: pkg install portaudio && pip install pyaudio)")
 
     server_url = f"http://{args.server}:{args.port}/api/audio"
 
@@ -205,7 +240,16 @@ def main():
             chunk_num += 1
             print(f"[{chunk_num}] Recording {args.duration}s...")
 
-            wav_data = record_fn(args.duration, args.rate)
+            try:
+                wav_data = record_fn(args.duration, args.rate)
+            except Exception as rec_err:
+                if record_fn == record_chunk_pyaudio:
+                    print(f"  pyaudio error: {rec_err}")
+                    print("  Falling back to termux-microphone-record...")
+                    record_fn = record_chunk_termux
+                    wav_data = record_fn(args.duration, args.rate)
+                else:
+                    raise
 
             if not wav_data:
                 print(f"  No audio captured, retrying...")
