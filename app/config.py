@@ -17,6 +17,7 @@ class Config:
     # Gemini
     gemini_api_key: str
     gemini_model: str
+    gemini_roast_model: str
 
     # ESP32 / Windows bridge printer
     esp32_host: str
@@ -49,6 +50,7 @@ class Config:
             camera_name=os.environ.get("CAMERA_NAME", "G6 Bullet"),
             gemini_api_key=os.environ["GEMINI_API_KEY"],
             gemini_model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+            gemini_roast_model=os.environ.get("GEMINI_ROAST_MODEL", "gemini-3.0-flash"),
             esp32_host=os.environ.get("ESP32_HOST", "192.168.0.100"),
             esp32_port=int(os.environ.get("ESP32_PORT", "9100")),
             android_host=os.environ.get("ANDROID_HOST", ""),

@@ -90,7 +90,7 @@ def main() -> None:
         api_key=cfg.protect_api_key,
         verify_ssl=cfg.protect_verify_ssl,
     )
-    roaster = GeminiRoaster(api_key=cfg.gemini_api_key, model=cfg.gemini_model)
+    roaster = GeminiRoaster(api_key=cfg.gemini_api_key, model=cfg.gemini_roast_model)
     processor = ImageProcessor(receipt_width=cfg.receipt_width_px)
     printer = PrinterClient(
         host=cfg.esp32_host,
@@ -111,7 +111,7 @@ def main() -> None:
         )
         convo_roaster = ConversationRoaster(
             api_key=cfg.gemini_api_key,
-            model=cfg.gemini_model,
+            model=cfg.gemini_roast_model,
             cooldown_seconds=cfg.audio_cooldown_seconds,
         )
         audio = AudioListener(
