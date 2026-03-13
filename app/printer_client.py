@@ -67,9 +67,9 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
         x = (W - (bbox[2] - bbox[0])) // 2
         draw.text((x, y), text, fill=0, font=font)
 
-    font_title  = load_font(32, bold=True)
-    font_roast  = load_font(18, bold=True)
-    font_footer = load_font(14)
+    font_title  = load_font(40, bold=True)
+    font_roast  = load_font(24, bold=True)
+    font_footer = load_font(18)
 
     if image_b64:
         pimg = Image.open(io.BytesIO(base64.b64decode(image_b64)))
@@ -85,16 +85,16 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
         ih = 0
 
     roast_lines = word_wrap(roast_text, font_roast, W - 2 * MARGIN)
-    LINE_H = 24
+    LINE_H = 30
 
-    height = (MARGIN + 40 + 6 + 8 + ih + 8 + 6 +
-              len(roast_lines) * LINE_H + 14 + 4 + 22 + 20 + 6)
+    height = (MARGIN + 50 + 6 + 8 + ih + 8 + 6 +
+              len(roast_lines) * LINE_H + 14 + 4 + 26 + 24 + 6)
 
     img = Image.new("L", (W, height), 255)
     draw = ImageDraw.Draw(img)
     cy = MARGIN
 
-    draw_centred(draw, receipt_title, cy, font_title); cy += 40
+    draw_centred(draw, receipt_title, cy, font_title); cy += 50
     draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=0, width=2); cy += 8
 
     if pimg:
@@ -107,7 +107,7 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
 
     cy += 10
     draw.line([(MARGIN, cy), (W - MARGIN, cy)], fill=0, width=1); cy += 6
-    draw_centred(draw, receipt_footer, cy, font_footer); cy += 20
+    draw_centred(draw, receipt_footer, cy, font_footer); cy += 24
     draw_centred(draw, timestamp, cy, font_footer)
 
     return img
