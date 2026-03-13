@@ -158,27 +158,43 @@ def send_audio(server_url: str, wav_data: bytes) -> bool:
         return False
 
 
-def detect_silence(wav_data: bytes, threshold: int = 500) -> bool:
+def detect_silence(wav_data: bytes, threshold: int = 200) -> bool:
     """Check if a WAV chunk is mostly silence (skip sending to save bandwidth)."""
-    # Skip WAV header (44 bytes) and check RMS of samples
     if len(wav_data) < 100:
         return True
-    pcm = wav_data[44:]
-    if not pcm:
+
+    # Find the "data" chunk in the WAV — don't assume header is exactly 44 bytes
+    data_offset = wav_data.find(b"data")
+    if data_offset == -1:
+        # Not a valid WAV — send it anyway, let the server deal with it
+        print(f"  (no WAV data chunk found, skipping silence check)")
+        return False
+    # Skip "data" + 4-byte size field
+    data_offset += 8
+
+    pcm = wav_data[data_offset:]
+    if len(pcm) < 4:
         return True
 
-    # Calculate RMS of 16-bit samples
+    # Calculate RMS of 16-bit signed samples (sample evenly across the chunk)
     n_samples = len(pcm) // 2
-    if n_samples == 0:
-        return True
+    step = max(2, len(pcm) // 20000)  # sample ~10000 points spread across whole chunk
+    step = step + (step % 2)  # ensure even (16-bit alignment)
 
     total = 0
-    for i in range(0, min(len(pcm) - 1, 10000), 2):  # sample first 5000 samples
+    count = 0
+    for i in range(0, len(pcm) - 1, step):
         sample = struct.unpack_from("<h", pcm, i)[0]
         total += sample * sample
+        count += 1
 
-    rms = (total / min(n_samples, 5000)) ** 0.5
-    return rms < threshold
+    if count == 0:
+        return True
+
+    rms = (total / count) ** 0.5
+    is_silent = rms < threshold
+    print(f"  Audio RMS: {rms:.0f} (threshold: {threshold}, {'SILENCE' if is_silent else 'speech detected'})")
+    return is_silent
 
 
 def main():
@@ -189,8 +205,8 @@ def main():
     parser.add_argument("--rate", type=int, default=16000, help="Sample rate (default: 16000)")
     parser.add_argument("--method", choices=["auto", "pyaudio", "termux"], default="auto",
                         help="Recording method (default: auto — tries pyaudio, falls back to termux)")
-    parser.add_argument("--silence-threshold", type=int, default=500,
-                        help="RMS threshold below which audio is considered silence (default: 500)")
+    parser.add_argument("--silence-threshold", type=int, default=200,
+                        help="RMS threshold below which audio is considered silence (default: 200)")
     args = parser.parse_args()
 
     # Auto-detect method
