@@ -64,7 +64,8 @@ class ConversationRoaster:
     """Judges conversation transcripts and generates roasts when warranted."""
 
     api_key: str
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-2.5-flash"
+    fallback_model: str = "gemini-2.5-flash"
     cooldown_seconds: int = CONVO_COOLDOWN_SECONDS
     _transcript: deque = field(default_factory=lambda: deque(maxlen=MAX_TRANSCRIPT_LINES))
     _last_roast_time: float = 0.0
@@ -73,8 +74,8 @@ class ConversationRoaster:
 
     def __post_init__(self):
         self._client = genai.Client(api_key=self.api_key)
-        log.info("Conversation roaster ready (model=%s, cooldown=%ds)",
-                 self.model, self.cooldown_seconds)
+        log.info("Conversation roaster ready (model=%s, fallback=%s, cooldown=%ds)",
+                 self.model, self.fallback_model, self.cooldown_seconds)
 
     def add_transcript(self, text: str) -> None:
         """Add a new chunk of transcribed speech to the rolling window."""
@@ -108,10 +109,47 @@ class ConversationRoaster:
             return False
         return True
 
+    def _call_model(self, prompt: str, model: str) -> str | None:
+        """Call a single model. Returns the text response or None."""
+        response = self._client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=prompt)],
+                ),
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=JUDGE_SYSTEM_PROMPT,
+                max_output_tokens=512,
+                temperature=1.0,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                safety_settings=[
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HARASSMENT",
+                        threshold="BLOCK_ONLY_HIGH",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HATE_SPEECH",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                ],
+            ),
+        )
+        return response.text.strip() if response.text else None
+
     def evaluate_and_roast(self) -> str | None:
         """Evaluate the current transcript. Returns roast text or None if [SKIP].
 
-        Sends the transcript to Gemini to judge whether it's roast-worthy.
+        Tries the primary model first, falls back on error.
         """
         if not self.should_evaluate():
             return None
@@ -122,54 +160,25 @@ class ConversationRoaster:
 
         prompt = JUDGE_PROMPT_TEMPLATE.format(transcript=transcript)
 
-        try:
-            response = self._client.models.generate_content(
-                model=self.model,
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=prompt)],
-                    ),
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=JUDGE_SYSTEM_PROMPT,
-                    max_output_tokens=512,
-                    temperature=1.0,
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
-                    safety_settings=[
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_HARASSMENT",
-                            threshold="BLOCK_ONLY_HIGH",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_HATE_SPEECH",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_DANGEROUS_CONTENT",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
-                        ),
-                    ],
-                ),
-            )
+        for model in (self.model, self.fallback_model):
+            try:
+                result = self._call_model(prompt, model)
+                if not result:
+                    log.debug("Empty response from %s", model)
+                    continue
 
-            if response.text:
-                result = response.text.strip()
                 if "[SKIP]" in result:
-                    log.debug("Gemini skipped this transcript — not funny enough")
+                    log.debug("Gemini %s skipped — not funny enough", model)
                     return None
 
-                log.info("🎤 Conversation roast generated (%d chars)", len(result))
+                log.info("🎤 Conversation roast via %s (%d chars)", model, len(result))
                 self._last_roast_time = time.time()
                 self._chunks_since_roast = 0
                 return result
 
-            log.debug("Empty response from conversation judge")
-        except Exception as exc:
-            log.error("Conversation roast error: %s", exc, exc_info=True)
+            except Exception as exc:
+                log.error("Conversation roast %s error: %s", model, exc, exc_info=True)
+                if model != self.fallback_model:
+                    log.info("Falling back to %s", self.fallback_model)
 
         return None

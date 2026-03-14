@@ -18,6 +18,7 @@ class Config:
     gemini_api_key: str
     gemini_model: str
     gemini_roast_model: str
+    gemini_fallback_model: str
 
     # ESP32 / Windows bridge printer
     esp32_host: str

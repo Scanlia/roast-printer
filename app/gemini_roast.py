@@ -32,63 +32,71 @@ FALLBACK_ROASTS = [
 
 
 class GeminiRoaster:
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash",
+                 fallback_model: str = "gemini-2.5-flash"):
         self.client = genai.Client(api_key=api_key)
         self.model = model
-        log.info("Gemini roaster ready (model=%s)", model)
+        self.fallback_model = fallback_model
+        log.info("Gemini roaster ready (model=%s, fallback=%s)", model, fallback_model)
 
-    def roast_outfit(self, image_bytes: bytes) -> str:
-        """Send an image to Gemini and return the roast text."""
-        try:
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_text(text=ROAST_PROMPT),
-                            types.Part.from_bytes(
-                                data=image_bytes,
-                                mime_type="image/jpeg",
-                            ),
-                        ],
-                    ),
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    max_output_tokens=1024,
-                    temperature=1.0,
-                    thinking_config=types.ThinkingConfig(
-                        thinking_budget=0,   # skip reasoning, just roast
-                    ),
-                    safety_settings=[
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_HARASSMENT",
-                            threshold="BLOCK_ONLY_HIGH",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_HATE_SPEECH",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
-                        ),
-                        types.SafetySetting(
-                            category="HARM_CATEGORY_DANGEROUS_CONTENT",
-                            threshold="BLOCK_MEDIUM_AND_ABOVE",
+    def _generate(self, image_bytes: bytes, model: str) -> str | None:
+        response = self.client.models.generate_content(
+            model=model,
+            contents=[
+                types.Content(
+                    role="user",
+                    parts=[
+                        types.Part.from_text(text=ROAST_PROMPT),
+                        types.Part.from_bytes(
+                            data=image_bytes,
+                            mime_type="image/jpeg",
                         ),
                     ],
                 ),
-            )
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_PROMPT,
+                max_output_tokens=1024,
+                temperature=1.0,
+                thinking_config=types.ThinkingConfig(
+                    thinking_budget=0,
+                ),
+                safety_settings=[
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HARASSMENT",
+                        threshold="BLOCK_ONLY_HIGH",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_HATE_SPEECH",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                    types.SafetySetting(
+                        category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                        threshold="BLOCK_MEDIUM_AND_ABOVE",
+                    ),
+                ],
+            ),
+        )
+        if response.text:
+            return response.text.strip()
+        return None
 
-            if response.text:
-                roast = response.text.strip()
-                log.info("Roast generated (%d chars)", len(roast))
-                return roast
-
-            log.warning("Empty Gemini response")
-        except Exception as exc:
-            log.error("Gemini API error: %s", exc, exc_info=True)
+    def roast_outfit(self, image_bytes: bytes) -> str:
+        """Send an image to Gemini and return the roast text."""
+        for model in (self.model, self.fallback_model):
+            try:
+                roast = self._generate(image_bytes, model)
+                if roast:
+                    log.info("Roast generated via %s (%d chars)", model, len(roast))
+                    return roast
+                log.warning("Empty response from %s", model)
+            except Exception as exc:
+                log.error("Gemini %s error: %s", model, exc, exc_info=True)
+                if model != self.fallback_model:
+                    log.info("Falling back to %s", self.fallback_model)
 
         return random.choice(FALLBACK_ROASTS)
