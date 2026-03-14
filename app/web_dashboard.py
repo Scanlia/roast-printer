@@ -21,6 +21,7 @@ _latest_payload: Optional[dict] = None
 _printer_client = None
 _audio_listener = None
 _cooldown_seconds: int = 120
+_silence_threshold: int = 100
 _lock = threading.Lock()
 
 
@@ -86,6 +87,17 @@ def get_cooldown() -> int:
         return _cooldown_seconds
 
 
+def set_silence_threshold(threshold: int) -> None:
+    global _silence_threshold
+    with _lock:
+        _silence_threshold = max(0, threshold)
+
+
+def get_silence_threshold() -> int:
+    with _lock:
+        return _silence_threshold
+
+
 def _do_reprint() -> dict:
     """Resend the last receipt payload to the printer."""
     with _lock:
@@ -138,7 +150,7 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             result = _do_reprint()
             self._json_response(result)
         elif self.path == "/api/config":
-            self._json_response({"cooldown": get_cooldown()})
+            self._json_response({"cooldown": get_cooldown(), "silence_threshold": get_silence_threshold()})
         elif self.path.startswith("/api/test_print/"):
             method = self.path.split("/")[-1]
             result = _do_test_print(method)
@@ -156,6 +168,8 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_audio_status()
         elif self.path == "/api/audio/transcript":
             self._handle_audio_transcript()
+        elif self.path == "/api/audio/config":
+            self._json_response({"silence_threshold": get_silence_threshold()})
         elif self.path == "/api/convo_latest":
             self._json_response(_latest_convo_roast)
         else:
@@ -176,6 +190,16 @@ class DashboardHandler(SimpleHTTPRequestHandler):
             self._handle_audio_upload()
         elif self.path == "/api/audio/toggle":
             self._handle_audio_toggle()
+        elif self.path == "/api/audio/silence_threshold":
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            try:
+                val = max(0, int(body["threshold"]))
+                set_silence_threshold(val)
+                log.info("Silence threshold updated to %d via dashboard", val)
+                self._json_response({"ok": True, "threshold": val})
+            except (KeyError, ValueError) as e:
+                self._json_response({"ok": False, "error": str(e)})
         else:
             self.send_response(404)
             self.end_headers()
@@ -381,6 +405,16 @@ DASHBOARD_HTML = """\
           <span id="cooldown-status" style="color:#666;font-size:.8rem"></span>
         </div>
       </div>
+      <div style="padding:.5rem 0">
+        <label style="color:#aaa;font-size:.85rem;display:block;margin-bottom:.4rem">Audio silence threshold (RMS &mdash; lower = more sensitive)</label>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input id="silence-input" type="number" min="0" step="25"
+            style="width:90px;padding:.4rem .6rem;background:#222;border:1px solid #444;
+                   color:#eee;border-radius:4px;font-family:inherit;font-size:1rem">
+          <button class="btn" onclick="saveSilenceThreshold()" style="font-size:.85rem">Save</button>
+          <span id="silence-status" style="color:#666;font-size:.8rem"></span>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -523,6 +557,7 @@ async function loadConfig() {
     const r = await fetch('/api/config');
     const data = await r.json();
     document.getElementById('cooldown-input').value = data.cooldown ?? 120;
+    document.getElementById('silence-input').value = data.silence_threshold ?? 100;
   } catch(e) {}
 }
 
@@ -536,6 +571,26 @@ async function saveCooldown() {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({seconds: secs}),
+    });
+    const data = await r.json();
+    status.textContent = data.ok ? '\u2713 Saved' : ('Error: ' + data.error);
+    status.style.color = data.ok ? '#4caf50' : '#f44336';
+  } catch(e) {
+    status.textContent = 'Failed';
+  }
+  setTimeout(() => { status.textContent = ''; }, 3000);
+}
+
+async function saveSilenceThreshold() {
+  const input = document.getElementById('silence-input');
+  const status = document.getElementById('silence-status');
+  const val = parseInt(input.value, 10);
+  if (isNaN(val) || val < 0) { status.textContent = 'Invalid value'; return; }
+  try {
+    const r = await fetch('/api/audio/silence_threshold', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({threshold: val}),
     });
     const data = await r.json();
     status.textContent = data.ok ? '\u2713 Saved' : ('Error: ' + data.error);

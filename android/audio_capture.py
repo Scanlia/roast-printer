@@ -16,6 +16,7 @@ roaster, and prints a receipt if something funny was said.
 
 import argparse
 import io
+import json
 import struct
 import sys
 import time
@@ -158,7 +159,7 @@ def send_audio(server_url: str, wav_data: bytes) -> bool:
         return False
 
 
-def detect_silence(wav_data: bytes, threshold: int = 200) -> bool:
+def detect_silence(wav_data: bytes, threshold: int = 100) -> bool:
     """Check if a WAV chunk is mostly silence (skip sending to save bandwidth)."""
     if len(wav_data) < 100:
         return True
@@ -205,8 +206,8 @@ def main():
     parser.add_argument("--rate", type=int, default=16000, help="Sample rate (default: 16000)")
     parser.add_argument("--method", choices=["auto", "pyaudio", "termux"], default="auto",
                         help="Recording method (default: auto — tries pyaudio, falls back to termux)")
-    parser.add_argument("--silence-threshold", type=int, default=200,
-                        help="RMS threshold below which audio is considered silence (default: 200)")
+    parser.add_argument("--silence-threshold", type=int, default=100,
+                        help="RMS threshold below which audio is considered silence (default: 100)")
     args = parser.parse_args()
 
     # Auto-detect method
@@ -250,9 +251,23 @@ def main():
 
     record_fn = record_chunk_pyaudio if args.method == "pyaudio" else record_chunk_termux
     chunk_num = 0
+    base_url = f"http://{args.server}:{args.port}"
+    silence_threshold = args.silence_threshold
 
     while True:
         try:
+            # Poll server for updated silence threshold
+            try:
+                req = urllib.request.Request(f"{base_url}/api/audio/config", method="GET")
+                with urllib.request.urlopen(req, timeout=3) as resp:
+                    cfg = json.loads(resp.read().decode())
+                    new_thresh = cfg.get("silence_threshold")
+                    if new_thresh is not None and new_thresh != silence_threshold:
+                        silence_threshold = int(new_thresh)
+                        print(f"  Silence threshold updated from server: {silence_threshold}")
+            except Exception:
+                pass  # use last known threshold
+
             chunk_num += 1
             print(f"[{chunk_num}] Recording {args.duration}s...")
 
@@ -275,7 +290,7 @@ def main():
             print(f"  Captured {len(wav_data)} bytes")
 
             # Skip silence
-            if detect_silence(wav_data, args.silence_threshold):
+            if detect_silence(wav_data, silence_threshold):
                 print(f"  Silence detected, skipping")
                 continue
 
