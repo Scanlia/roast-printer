@@ -77,8 +77,8 @@ def _render_receipt_image(payload: dict, paper_width_dots: int = 512):
         iw, ih = W, int(W * aspect)
         pimg = pimg.resize((iw, ih), Image.Resampling.LANCZOS).convert("L")
         arr = np.array(pimg, dtype=np.float32) / 255.0
-        arr = np.power(arr, 0.45)
-        arr = arr * 0.65 + 0.35
+        arr = np.power(arr, 0.55)
+        arr = arr * 0.80 + 0.15
         pimg = Image.fromarray((np.clip(arr, 0, 1) * 255).astype("uint8"), mode="L")
     else:
         pimg = None
